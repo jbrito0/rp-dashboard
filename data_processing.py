@@ -1,30 +1,39 @@
 import pandas as pd
 import streamlit as st
 
-@st.cache_data(ttl=600)  # Cache for 10 minutes
+@st.cache_data(ttl=600)
 def load_google_sheet_public(csv_url):
     """
     Load a published Google Sheet CSV as a DataFrame
-    Args:
-        csv_url (str): Published CSV link of Google Sheet
-    Returns:
-        pd.DataFrame: Sheet data with 'Mes' column added
+    and calculate initial percentage columns.
     """
-    # Convert the /pubhtml link to CSV export URL
+    # Convert /pubhtml to CSV export
     csv_export_url = csv_url.replace("/pubhtml", "/pub?output=csv")
-    
     df = pd.read_csv(csv_export_url)
-    
-    # Clean & add Month column
-    df = df.dropna(subset=["Fecha"])  # Drop rows without Fecha
-    df["Mes"] = pd.to_datetime(df["Fecha"]).dt.strftime("%Y-%m")
-    
-    return df
 
-def filter_data(df, month, level):
-    """Filter DataFrame by month and Nivel"""
-    if month != "Todos":
-        df = df[df["Mes"] == month]
+    # Ensure numeric columns
+    numeric_cols = [
+        "meta mensual volumen",
+        "meta compras 2026",
+        "meta compra mensual",
+        "volumen enero",
+        "compras enero",
+    ]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Calculate percentages
+    df["% Meta Volumen"] = (df["volumen enero"] / df["meta mensual volumen"] * 100).round(2)
+    df["% Meta Compras"] = (df["compras enero"] / df["meta compra mensual"] * 100).round(2)
+
+    # Define sales & purchase columns
+    sales_cols = ["volumen enero", "meta mensual volumen", "% Meta Volumen"]
+    purchase_cols = ["compras enero", "meta compra mensual", "% Meta Compras"]
+
+    return df, sales_cols, purchase_cols
+
+def filter_data(df, level=None):
+    """Filter by Nivel if provided"""
     if level:
-        df = df[df["Nivel"].isin(level)]
+        df = df[df["nivel"].isin(level)]
     return df
