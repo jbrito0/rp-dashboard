@@ -1,5 +1,6 @@
 import streamlit as st
 import plotly.express as px
+from datetime import datetime
 
 # Custom CSS for shadows and styling
 shadow_css = """
@@ -80,17 +81,22 @@ h1, h2, h3 {
 </style>
 """
 
-def render(df, sales_cols, purchase_cols):
+def render(df, sales_cols, purchase_cols, volume_cols, purchase_cols_list):
     # Apply custom CSS
     st.markdown(shadow_css, unsafe_allow_html=True)
     
     st.title("📊 Resumen")
 
+    # Determine current month
+    month_names = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    current_month = month_names[datetime.now().month - 1]
+    current_volume_col = f"volumen {current_month}"
+
     # --- Top 3 Performers ---
     st.markdown("<h3 style='text-align: center; margin-top: 0;'>🏆 Top 3 Vendedores</h3>", unsafe_allow_html=True)
     
     # Get top 3 performers
-    top3 = df.sort_values(by="volumen enero", ascending=False).head(3).copy()
+    top3 = df.sort_values(by=current_volume_col, ascending=False).head(3).copy()
     top3["rank"] = [1, 2, 3]
     top3["medal"] = ["🥇", "🥈", "🥉"]
     
@@ -113,7 +119,7 @@ def render(df, sales_cols, purchase_cols):
                     # Convert image to base64 for HTML embedding
                     with open(potential_path, "rb") as image_file:
                         encoded_string = base64.b64encode(image_file.read()).decode()
-                        image_html = f'<img src="data:image/{ext.split(".")[-1]};base64,{encoded_string}" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin: 15px 0;">'
+                        image_html = f'<img src="data:image/{ext.split(".")[-1]};base64,{encoded_string}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; margin: 15px 0;">'
                     break
             
             # If no image found, use placeholder
@@ -126,31 +132,31 @@ def render(df, sales_cols, purchase_cols):
                 background: white;
                 border-radius: 10px;
                 padding: 20px;
-                margin: 10px 0;
+                margin: 10px 0 30px 0;
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 text-align: center;
                 border: 2px solid {'#FFD700' if i == 0 else '#C0C0C0' if i == 1 else '#CD7F32'};
-                min-height: 280px;
+                min-height: 320px;
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
                 align-items: center;
             ">
                 {image_html}
-                <h4 style="margin: 10px 0; color: #333; font-size: 1.1em;">{row['nombre']}</h4>
-                <p style="margin: 5px 0; font-weight: bold; color: #2E8B57; font-size: 1.2em;">
-                    ${row['volumen enero']:,.2f}
+                <h4 style="margin: 10px 0; color: #333; font-size: 1.3em;">{row['nombre']}</h4>
+                <p style="margin: 5px 0; font-weight: bold; color: #2E8B57; font-size: 1.5em;">
+                    ${row[current_volume_col]:,.2f}
                 </p>
-                <p style="margin: 5px 0; font-size: 0.9em; color: #666;">
+                <p style="margin: 5px 0; font-size: 1em; color: #666;">
                     {row['nivel']}
                 </p>
-                <div style="font-size: 3em; margin-top: 15px;">{row['medal']}</div>
+                <div style="font-size: 4em; margin-top: 15px;">{row['medal']}</div>
             </div>
             """, unsafe_allow_html=True)
 
     # --- Top 10 Sales ---
     st.markdown("<h3 style='text-align: center; margin-top: 0;'>🏆 Top 10 Vendedores</h3>", unsafe_allow_html=True)
-    top10 = df.sort_values(by="volumen enero", ascending=False).head(10).copy()
+    top10 = df.sort_values(by=current_volume_col, ascending=False).head(10).copy()
     
     # Add icons for top 3
     icons = ["🥇", "🥈", "🥉", "", "", "", "", "", "", ""]
@@ -160,16 +166,17 @@ def render(df, sales_cols, purchase_cols):
     # Create horizontal bar chart
     fig_top10 = px.bar(
         top10, 
-        x="volumen enero", 
+        x=current_volume_col, 
         y="display_name", 
         orientation='h',
-        text="volumen enero",
+        text=current_volume_col,
         title="",
-        labels={"volumen enero": "Volumen Enero", "display_name": "Vendedor"}
+        labels={current_volume_col: f"Volumen {current_month.capitalize()}", "display_name": "Vendedor"}
     )
-    fig_top10.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+    fig_top10.update_traces(texttemplate='$%{text:,.2f}', textposition='outside', textfont=dict(color='black', size=14))
     fig_top10.update_layout(
-        yaxis={'categoryorder':'total ascending'},
-        margin=dict(l=20, r=20, t=20, b=20)
+        yaxis={'categoryorder':'total ascending', 'tickfont': {'color': 'black'}},
+        margin=dict(l=20, r=20, t=20, b=20),
+        height=600
     )
     st.plotly_chart(fig_top10, width='stretch')

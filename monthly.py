@@ -73,54 +73,81 @@ h1, h2, h3 {
 </style>
 """
 
-def render(df, sales_cols, purchase_cols):
+def render(df, sales_cols, purchase_cols, volume_cols, purchase_cols_list):
     # Apply custom CSS
     st.markdown(shadow_css, unsafe_allow_html=True)
     
     st.title("📆 Ventas Mensuales")
 
-    # --- Filter by Nivel ---
-    niveles = df["nivel"].unique().tolist()
-    selected_niveles = st.multiselect("Seleccionar Nivel", niveles, default=niveles)
+    # --- Filter by Nivel and Select Month ---
+    col1, col2 = st.columns(2)
+    with col1:
+        niveles = df["nivel"].unique().tolist()
+        selected_niveles = st.multiselect("Seleccionar Nivel", niveles, default=niveles)
+    with col2:
+        available_months = [col.replace("volumen ", "") for col in volume_cols]
+        selected_month = st.selectbox("Seleccionar Mes", available_months, index=0)
+    
     df_filtered = df[df["nivel"].isin(selected_niveles)]
+    selected_volume_col = f"volumen {selected_month}"
+    selected_purchase_col = f"compras {selected_month}"
 
-    # --- Top 10 ---
-    st.subheader("🏆 Top 10 Ventas Mensuales")
-    top10 = df_filtered.sort_values(by="volumen enero", ascending=False).head(10)
-    st.dataframe(top10[["nombre", "nivel", "volumen enero", "% Meta Volumen"]].set_index("nombre"))
+    # --- Ventas por Vendedor ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader(f"🏆 Ventas por Vendedor - {selected_month.capitalize()}")
+    all_sellers = df_filtered.sort_values(by=selected_volume_col, ascending=False).copy()
+    
+    # Create horizontal bar chart
+    fig = px.bar(
+        all_sellers, 
+        x=selected_volume_col, 
+        y="nombre", 
+        orientation='h',
+        text=selected_volume_col,
+        title="",
+        labels={selected_volume_col: f"Volumen {selected_month.capitalize()}", "nombre": "Vendedor"}
+    )
+    fig.update_traces(texttemplate='$%{text:,.2f}', textposition='outside', textfont=dict(color='black'))
+    fig.update_layout(
+        yaxis={'categoryorder':'total ascending', 'tickfont': {'color': 'black'}},
+        margin=dict(l=20, r=20, t=20, b=20),
+        height=max(400, len(all_sellers) * 20)  # Adjust height based on number of sellers
+    )
+    st.plotly_chart(fig, width='stretch')
 
     # --- Gráfico de Tendencia Mensual ---
     st.subheader("📈 Tendencia Mensual")
     
-    # Calculate total monthly volume for trend
-    monthly_total = df_filtered["volumen enero"].sum()
+    # Calculate total monthly volume for all available months
+    monthly_totals = [df_filtered[col].sum() for col in volume_cols]
+    months_cap = [month.capitalize() for month in available_months]
     
-    # Create time series data (currently only January, but structured for multiple months)
+    # Create time series data
     import pandas as pd
     trend_data = pd.DataFrame({
-        'Mes': ['Enero'],
-        'Volumen Total': [monthly_total],
-        'Fecha': pd.to_datetime(['2024-01-01'])  # Using a reference date for January
+        'Mes': months_cap,
+        'Volumen Total': monthly_totals,
+        'Fecha': pd.to_datetime([f"2024-{i+1:02d}-01" for i in range(len(available_months))])
     })
     
     # Create line plot with markers
     fig = px.line(trend_data, x='Fecha', y='Volumen Total', 
                   title="",
-                  markers=True,  # Show dots for each data point
-                  line_shape='linear')  # Connect points with straight lines
+                  markers=True,
+                  line_shape='linear')
     
     # Format the x-axis to show month names
     fig.update_xaxes(
-        tickformat="%B",  # Show full month names
+        tickformat="%B",
         tickmode='array',
         tickvals=trend_data['Fecha'],
-        ticktext=['Enero']
+        ticktext=months_cap
     )
     
     # Add data labels on the points
     fig.update_traces(
         mode='lines+markers+text',
-        text=[f"${monthly_total:,.0f}"],
+        text=[f"${v:,.0f}" for v in monthly_totals],
         textposition="top center",
         textfont=dict(size=12)
     )
@@ -137,20 +164,25 @@ def render(df, sales_cols, purchase_cols):
     # --- Goals Table ---
     st.markdown("### 📊 Rendimiento de Ventas y Compras")
     
+    # Calculate percentages for selected month
+    df_filtered = df_filtered.copy()
+    df_filtered[f"% Meta Volumen {selected_month}"] = (df_filtered[selected_volume_col] / df_filtered["meta mensual volumen"] * 100).round(2)
+    df_filtered[f"% Meta Compras {selected_month}"] = (df_filtered[selected_purchase_col] / df_filtered["meta compra mensual"] * 100).round(2)
+    
     # Create formatted dataframe for display
     table_df = df_filtered[["nombre", "nivel", 
-                           "meta mensual volumen", "volumen enero", "% Meta Volumen",
-                           "meta compra mensual", "compras enero", "% Meta Compras"]].copy()
+                           "meta mensual volumen", selected_volume_col, f"% Meta Volumen {selected_month}",
+                           "meta compra mensual", selected_purchase_col, f"% Meta Compras {selected_month}"]].copy()
     
     # Format monetary columns with $ sign
     table_df["meta mensual volumen"] = table_df["meta mensual volumen"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
-    table_df["volumen enero"] = table_df["volumen enero"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
+    table_df[selected_volume_col] = table_df[selected_volume_col].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
     table_df["meta compra mensual"] = table_df["meta compra mensual"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
-    table_df["compras enero"] = table_df["compras enero"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
+    table_df[selected_purchase_col] = table_df[selected_purchase_col].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
     
     # Format percentage columns with % sign
-    table_df["% Meta Volumen"] = table_df["% Meta Volumen"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else x)
-    table_df["% Meta Compras"] = table_df["% Meta Compras"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else x)
+    table_df[f"% Meta Volumen {selected_month}"] = table_df[f"% Meta Volumen {selected_month}"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else x)
+    table_df[f"% Meta Compras {selected_month}"] = table_df[f"% Meta Compras {selected_month}"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else x)
     
     # Set index and display with styling
     table_df = table_df.set_index("nombre")
@@ -172,6 +204,6 @@ def render(df, sales_cols, purchase_cols):
         return ''
     
     # Apply styling to the dataframe
-    styled_df = table_df.style.applymap(style_percentages, subset=["% Meta Volumen", "% Meta Compras"])
+    styled_df = table_df.style.applymap(style_percentages, subset=[f"% Meta Volumen {selected_month}", f"% Meta Compras {selected_month}"])
     
     st.dataframe(styled_df)

@@ -73,7 +73,7 @@ h1, h2, h3 {
 </style>
 """
 
-def render(df, sales_cols, purchase_cols):
+def render(df, sales_cols, purchase_cols, volume_cols, purchase_cols_list):
     # Apply custom CSS
     st.markdown(shadow_css, unsafe_allow_html=True)
     
@@ -86,11 +86,46 @@ def render(df, sales_cols, purchase_cols):
 
     # --- Sales by Nivel ---
     st.subheader("💰 Ventas por Nivel")
-    df_grouped = df_filtered.groupby("nivel")["volumen enero"].sum().reset_index()
-    fig = px.bar(df_grouped, x="nivel", y="volumen enero", text="volumen enero", title="")
+    df_grouped = df_filtered.groupby("nivel")["total_volumen"].sum().reset_index()
+    fig = px.pie(df_grouped, names="nivel", values="total_volumen", title="")
     fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
     st.plotly_chart(fig, width='stretch')
 
     # --- Goals vs Actual ---
-    st.subheader("🎯 Metas y %")
-    st.dataframe(df_filtered[["nombre", "nivel", "meta mensual volumen", "volumen enero", "% Meta Volumen"]].set_index("nombre"))
+    st.subheader("🎯 Metas Anuales y Rendimiento")
+    table_df = df_filtered[["nombre", "nivel", "meta mensual volumen", "total_volumen", "% Meta Volumen Anual", "meta compras 2026", "total_compras", "% Meta Compras Anual"]].copy()
+    
+    # Format monetary columns with $ sign
+    import pandas as pd
+    table_df["meta mensual volumen"] = table_df["meta mensual volumen"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
+    table_df["total_volumen"] = table_df["total_volumen"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
+    table_df["meta compras 2026"] = table_df["meta compras 2026"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
+    table_df["total_compras"] = table_df["total_compras"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else x)
+    
+    # Format percentage columns with % sign
+    table_df["% Meta Volumen Anual"] = table_df["% Meta Volumen Anual"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else x)
+    table_df["% Meta Compras Anual"] = table_df["% Meta Compras Anual"].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else x)
+    
+    # Set index
+    table_df = table_df.set_index("nombre")
+    
+    # Apply conditional styling for percentage columns
+    def style_percentages(val):
+        if isinstance(val, str) and '%' in val:
+            try:
+                # Extract numeric value from percentage string
+                pct = float(val.replace('%', ''))
+                if pct < 50:
+                    return 'background-color: #ffcccc'  # Light red
+                elif pct < 100:
+                    return 'background-color: #ffffcc'  # Light yellow
+                else:
+                    return 'background-color: #ccffcc'  # Light green
+            except ValueError:
+                return ''
+        return ''
+    
+    # Apply styling to the dataframe
+    styled_df = table_df.style.map(style_percentages, subset=["% Meta Volumen Anual", "% Meta Compras Anual"])
+    
+    st.dataframe(styled_df)
